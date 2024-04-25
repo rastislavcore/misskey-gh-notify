@@ -4,87 +4,85 @@ import Koa from 'koa';
 import Router from 'koa-router';
 import bodyParser from 'koa-bodyparser';
 import request from 'request';
-import crypto = require('crypto');
+import crypto from 'crypto';
 import { Netmask } from 'netmask';
+import dotenv from 'dotenv';
 
-import config from '../config.json';
+// Load environment variables
+dotenv.config();
+
+const isHookEnabled = (hookName: string) => {
+    return process.env[hookName] === 'true';
+};
 
 const handler = new EventEmitter();
 
 // GitHub's IP range for webhooks: https://api.github.com/meta (section hooks)
 const allowedIPBlocks = [
-	new Netmask('192.30.252.0/22'),
-	new Netmask('185.199.108.0/22'),
-	new Netmask('140.82.112.0/20'),
-	new Netmask('143.55.64.0/20'),
+    new Netmask('192.30.252.0/22'),
+    new Netmask('185.199.108.0/22'),
+    new Netmask('140.82.112.0/20'),
+    new Netmask('143.55.64.0/20'),
 ];
 
 // Function to post a note to Misskey
 const post = async (text: string, home = true) => {
-	request.post(config.instance + '/api/notes/create', {
-		json: {
-			i: config.i,
-			text,
-			visibility: home ? 'home' : 'public',
-			noExtractMentions: true,
-			noExtractHashtags: true
-		}
-	});
+    request.post(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
+        json: {
+            i: process.env.MISSKEY_TOKEN,
+            text,
+            visibility: home ? 'home' : 'public',
+            noExtractMentions: true,
+            noExtractHashtags: true
+        }
+    });
 };
 
 const app = new Koa();
 app.use(bodyParser());
 
-const secret = config.hookSecret;
-
 const router = new Router();
 
 // Middleware to validate the IP address of the request
 app.use((ctx, next) => {
-	const ip = ctx.ip;
-	const isAllowed = allowedIPBlocks.some(block => block.contains(ip));
-	if (isAllowed) {
-		return next();
-	} else {
-		ctx.status = 403;
-		ctx.body = 'Access denied';
-		return Promise.resolve();
-	}
+    const ip = ctx.ip;
+    const isAllowed = allowedIPBlocks.some(block => block.contains(ip));
+    if (isAllowed) {
+        return next();
+    } else {
+        ctx.status = 403;
+        ctx.body = 'Access denied';
+        return Promise.resolve();
+    }
 });
 
 // Endpoint to receive GitHub webhooks
 router.post('/github', ctx => {
-	const body = JSON.stringify(ctx.request.body);
-	const hash = crypto.createHmac('sha1', secret).update(body).digest('hex');
-	const githubSignature = ctx.headers['x-hub-signature'];
+    const body = JSON.stringify(ctx.request.body);
+    const hash = crypto.createHmac('sha1', process.env.HOOK_SECRET).update(body).digest('hex');
+    const githubSignature = ctx.headers['x-hub-signature'];
 
-	// Ensure it's a string (as expected) and not undefined
-	if (typeof githubSignature === 'string') {
-		const sig1 = Buffer.from(githubSignature);
-		const sig2 = Buffer.from(`sha1=${hash}`);
+    if (typeof githubSignature === 'string') {
+        const sig1 = Buffer.from(githubSignature);
+        const sig2 = Buffer.from(`sha1=${hash}`);
 
-		// Compare signatures to verify the request
-		if (sig1.equals(sig2)) {
-			let ghHeader = ctx.headers['x-github-event'] as string;
-			handler.emit(ghHeader, ctx.request.body);
-			ctx.status = 204;
-		} else {
-			ctx.status = 400;
-			ctx.body = 'Invalid GitHub signature';
-		}
-	} else {
-		ctx.status = 400;
-		ctx.body = 'Invalid or missing GitHub signature';
-	}
+        if (sig1.equals(sig2)) {
+            let ghHeader = ctx.headers['x-github-event'] as string;
+            handler.emit(ghHeader, ctx.request.body);
+            ctx.status = 204;
+        } else {
+            ctx.status = 400;
+            ctx.body = 'Invalid GitHub signature';
+        }
+    } else {
+        ctx.status = 400;
+        ctx.body = 'Invalid or missing GitHub signature';
+    }
 });
 
 app.use(router.routes());
 
-const server = http.createServer(app.callback());
-
-server.listen(config.port);
-
-if (config.hooks.status) handler.on('status', event => {
+if (isHookEnabled('HOOK_STATUS')) handler.on('status', event => {
 	const state = event.state;
 	switch (state) {
 		case 'error':
@@ -94,7 +92,7 @@ if (config.hooks.status) handler.on('status', event => {
 
 			request({
 				url: `${parent.url}/statuses`,
-				proxy: config.proxy,
+				proxy: process.env.PROXY_URL,
 				headers: {
 					'User-Agent': 'misskey'
 				}
@@ -121,7 +119,7 @@ if (config.hooks.status) handler.on('status', event => {
 });
 
 
-if (config.hooks.push) handler.on('push', event => {
+if (isHookEnabled('HOOK_PUSH')) handler.on('push', event => {
 	const ref = event.ref;
 	switch (ref) {
 		case 'refs/heads/develop':
@@ -136,7 +134,7 @@ if (config.hooks.push) handler.on('push', event => {
 	}
 });
 
-if (config.hooks.issues) handler.on('issues', event => {
+if (isHookEnabled('HOOK_ISSUES')) handler.on('issues', event => {
 	const issue = event.issue;
 	const action = event.action;
 	let title: string;
@@ -149,7 +147,7 @@ if (config.hooks.issues) handler.on('issues', event => {
 	post(`${title}: #${issue.number} "${issue.title}"\n${issue.html_url}`);
 });
 
-if (config.hooks.issue_comment) handler.on('issue_comment', event => {
+if (isHookEnabled('HOOK_ISSUE_COMMENT')) handler.on('issue_comment', event => {
 	const issue = event.issue;
 	const comment = event.comment;
 	const action = event.action;
@@ -161,7 +159,7 @@ if (config.hooks.issue_comment) handler.on('issue_comment', event => {
 	post(text);
 });
 
-if (config.hooks.release) handler.on('release', event => {
+if (isHookEnabled('HOOK_RELEASE')) handler.on('release', event => {
 	const action = event.action;
 	const release = event.release;
 	let text: string;
@@ -172,18 +170,18 @@ if (config.hooks.release) handler.on('release', event => {
 	post(text);
 });
 
-if (config.hooks.watch) handler.on('watch', event => {
+if (isHookEnabled('HOOK_WATCH')) handler.on('watch', event => {
 	const sender = event.sender;
 	post(`$[spin ⭐️] Starred by ?[**${sender.login}**](${sender.html_url})`, false);
 });
 
-if (config.hooks.fork) handler.on('fork', event => {
+if (isHookEnabled('HOOK_FORK')) handler.on('fork', event => {
 	const sender = event.sender;
 	const repo = event.forkee;
 	post(`$[spin.y 🍴] ?[Forked](${repo.html_url}) by ?[**${sender.login}**](${sender.html_url})`);
 });
 
-if (config.hooks.pull_request) handler.on('pull_request', event => {
+if (isHookEnabled('HOOK_PULL_REQUEST')) handler.on('pull_request', event => {
 	const pr = event.pull_request;
 	const action = event.action;
 	let text: string;
@@ -200,7 +198,7 @@ if (config.hooks.pull_request) handler.on('pull_request', event => {
 	post(text);
 });
 
-if (config.hooks.pull_request_review_comment) handler.on('pull_request_review_comment', event => {
+if (isHookEnabled('HOOK_PULL_REQUEST_REVIEW_COMMENT')) handler.on('pull_request_review_comment', event => {
 	const pr = event.pull_request;
 	const comment = event.comment;
 	const action = event.action;
@@ -212,7 +210,7 @@ if (config.hooks.pull_request_review_comment) handler.on('pull_request_review_co
 	post(text);
 });
 
-if (config.hooks.pull_request_review) handler.on('pull_request_review', event => {
+if (isHookEnabled('HOOK_PULL_REQUEST_REVIEW')) handler.on('pull_request_review', event => {
 	const pr = event.pull_request;
 	const review = event.review;
 	if (review.body === undefined || review.body === null || review.body.length <= 0) return;
@@ -226,7 +224,7 @@ if (config.hooks.pull_request_review) handler.on('pull_request_review', event =>
 	post(text);
 });
 
-if (config.hooks.discussion) handler.on('discussion', event => {
+if (isHookEnabled('HOOK_DISCUSSION')) handler.on('discussion', event => {
 	const discussion = event.discussion;
 	const action = event.action;
 	let title: string;
@@ -253,7 +251,7 @@ if (config.hooks.discussion) handler.on('discussion', event => {
 	post(`${title}: #${discussion.number} "${discussion.title}"\n${url}`);
 });
 
-if (config.hooks.discussion_comment) handler.on('discussion_comment', event => {
+if (isHookEnabled('HOOK_DISCUSSION_COMMENT')) handler.on('discussion_comment', event => {
 	const discussion = event.discussion;
 	const comment = event.comment;
 	const action = event.action;
@@ -265,4 +263,7 @@ if (config.hooks.discussion_comment) handler.on('discussion_comment', event => {
 	post(text);
 });
 
-console.log("Service is running on port " + config.port);
+// Start the server
+const server = http.createServer(app.callback());
+server.listen(process.env.PORT);
+console.log(`Service is running on port ${process.env.PORT}`);

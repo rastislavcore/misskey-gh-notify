@@ -28,41 +28,37 @@ Create a file named config.json in the root directory. Fill it with the necessar
 1. Go to the settings of your repo -> Webhooks -> Add Webhook
 1. For Payload URL, use the URL or IP where you'll be hosting the bot, followed by `/github`
 1. Select application/json for content type
-1. Generate a random string of characters (~25 chars) for the Secret and place it under `hookSecret` in `config.json`.
+1. Generate a random string of characters (~25 chars) for the Secret and place it as `HOOK_SECRET` in your `.env` file.
 
 #### Configuring Misskey Bot
 
 1. Visit a bot-friendly Misskey instance and create a new account. Ensure to mark the account as a bot.
 1. In the account profile, select the 3 dots -> Edit Profile -> API -> Generate Token
-1. Place the generated token under `i` in `config.json`.
+1. Place the generated token as `MISSKEY_TOKEN` in your `.env` file.
 
 #### Example config.json
 
-```json
-{
-  "port": 8080,
-  "hookSecret": "your_random_string",
-  "i": "your_misskey_api_token",
-  "instance": "https://your.misskey.instance",
-  "proxy": null,
-  "hooks": {
-    "status": true,
-    "push": true,
-    // Additional hooks...
-  }
-}
+```makefile
+PORT=8080
+HOOK_SECRET=your_random_string
+MISSKEY_TOKEN=your_misskey_api_token
+MISSKEY_INSTANCE_URL=https://your.misskey.instance
+PROXY_URL=null
+HOOK_STATUS=true
+HOOK_PUSH=true
+# Additional hooks...
 ```
 
 ### Script Usage
 
-To start the server, run:
+To start the server, ensure your `.env` file is set up, then run:
 
 ```bash
 npm run build  // Compiles TypeScript to JavaScript
 npm start      // Starts the server
 ```
 
-The service will listen for incoming GitHub webhooks and post notifications to the specified Misskey instance based on the events and the configuration specified in `config.json`.
+The service will listen for incoming GitHub webhooks and post notifications to the specified Misskey instance based on the events enabled in your `.env` file. Adjust the hook settings in `.env` to enable or disable specific events.
 
 ### Development
 
