@@ -1,0 +1,21 @@
+{
+	"instance": "https://coretalk.space/",
+	"i": "",
+	"hookSecret": "",
+	"port": 8080,
+	"proxy": null,
+	"hooks": {
+		"status": true,
+		"push": true,
+		"issues": true,
+		"issue_comment": true,
+		"release": true,
+		"watch": true,
+		"fork": true,
+		"pull_request": true,
+		"pull_request_review_comment": true,
+		"pull_request_review": true,
+		"discussion": true,
+		"discussion_comment": true
+	}
+}
