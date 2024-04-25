@@ -1,9 +1,9 @@
+import fetch from 'node-fetch';
 import * as http from 'http';
 import { EventEmitter } from 'events';
 import Koa from 'koa';
 import Router from 'koa-router';
 import bodyParser from 'koa-bodyparser';
-import request from 'request';
 import crypto from 'crypto';
 import { Netmask } from 'netmask';
 import dotenv from 'dotenv';
@@ -25,16 +25,20 @@ const allowedIPBlocks = [
     new Netmask('143.55.64.0/20'),
 ];
 
-// Function to post a note to Misskey
+// Function to post a note to Misskey using node-fetch
 const post = async (text: string, home = true) => {
-    request.post(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
-        json: {
+    await fetch(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
             i: process.env.MISSKEY_TOKEN,
             text,
             visibility: home ? 'home' : 'public',
             noExtractMentions: true,
             noExtractHashtags: true
-        }
+        })
     });
 };
 
@@ -83,39 +87,34 @@ router.post('/github', ctx => {
 app.use(router.routes());
 
 if (isHookEnabled('HOOK_STATUS')) handler.on('status', event => {
-	const state = event.state;
-	switch (state) {
-		case 'error':
-		case 'failure':
-			const commit = event.commit;
-			const parent = commit.parents[0];
+    const state = event.state;
+    switch (state) {
+        case 'error':
+        case 'failure':
+            const commit = event.commit;
+            const parent = commit.parents[0];
 
-			request({
-				url: `${parent.url}/statuses`,
-				proxy: process.env.PROXY_URL,
-				headers: {
-					'User-Agent': 'misskey'
-				}
-			}, (err, res, body) => {
-				if (err) {
-					console.error(err);
-					return;
-				}
-				try {
-					const parentStatuses = JSON.parse(body);
-					const parentState = parentStatuses[0]?.state;
-					const stillFailed = parentState === 'failure' || parentState === 'error';
-					if (stillFailed) {
-						post(`⚠️ **BUILD STILL FAILED** ⚠️: [${commit.commit.message}](${commit.html_url})`);
-					} else {
-						post(`🚨 **BUILD FAILED** 🚨: [${commit.commit.message}](${commit.html_url})`);
-					}
-				} catch (parseError) {
-					console.error('Error parsing JSON:', parseError);
-				}
-			});
-			break;
-	}
+            // Using node-fetch to make the HTTP request
+            fetch(`${parent.url}/statuses`, {
+                method: 'GET', // Specify the method if necessary, default is GET
+                headers: {
+                    'User-Agent': 'misskey'
+                },
+                // proxy is not directly supported in node-fetch, you might need to use a custom agent
+            }).then(response => response.json()) // Convert response to JSON
+              .then(parentStatuses => {
+                const parentState = parentStatuses[0]?.state;
+                const stillFailed = parentState === 'failure' || parentState === 'error';
+                if (stillFailed) {
+                    post(`⚠️ **BUILD STILL FAILED** ⚠️: [${commit.commit.message}](${commit.html_url})`);
+                } else {
+                    post(`🚨 **BUILD FAILED** 🚨: [${commit.commit.message}](${commit.html_url})`);
+                }
+            }).catch(err => {
+                console.error('HTTP Request failed', err);
+            });
+            break;
+    }
 });
 
 

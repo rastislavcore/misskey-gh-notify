@@ -43,7 +43,6 @@ PORT=8080
 HOOK_SECRET=your_random_string
 MISSKEY_TOKEN=your_misskey_api_token
 MISSKEY_INSTANCE_URL=https://your.misskey.instance
-PROXY_URL=null
 HOOK_STATUS=true
 HOOK_PUSH=true
 # Additional hooks...
