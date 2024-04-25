@@ -12,34 +12,34 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const isHookEnabled = (hookName: string) => {
-    return process.env[hookName] === 'true';
+	return process.env[hookName] === 'true';
 };
 
 const handler = new EventEmitter();
 
 // GitHub's IP range for webhooks: https://api.github.com/meta (section hooks)
 const allowedIPBlocks = [
-    new Netmask('192.30.252.0/22'),
-    new Netmask('185.199.108.0/22'),
-    new Netmask('140.82.112.0/20'),
-    new Netmask('143.55.64.0/20'),
+	new Netmask('192.30.252.0/22'),
+	new Netmask('185.199.108.0/22'),
+	new Netmask('140.82.112.0/20'),
+	new Netmask('143.55.64.0/20'),
 ];
 
 // Function to post a note to Misskey using node-fetch
 const post = async (text: string, home = true) => {
-    await fetch(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            i: process.env.MISSKEY_TOKEN,
-            text,
-            visibility: home ? 'home' : 'public',
-            noExtractMentions: true,
-            noExtractHashtags: true
-        })
-    });
+	await fetch(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			i: process.env.MISSKEY_TOKEN,
+			text,
+			visibility: home ? 'home' : 'public',
+			noExtractMentions: true,
+			noExtractHashtags: true
+		})
+	});
 };
 
 const app = new Koa();
@@ -49,72 +49,72 @@ const router = new Router();
 
 // Middleware to validate the IP address of the request
 app.use((ctx, next) => {
-    const ip = ctx.ip;
-    const isAllowed = allowedIPBlocks.some(block => block.contains(ip));
-    if (isAllowed) {
-        return next();
-    } else {
-        ctx.status = 403;
-        ctx.body = 'Access denied';
-        return Promise.resolve();
-    }
+	const ip = ctx.ip;
+	const isAllowed = allowedIPBlocks.some(block => block.contains(ip));
+	if (isAllowed) {
+		return next();
+	} else {
+		ctx.status = 403;
+		ctx.body = 'Access denied';
+		return Promise.resolve();
+	}
 });
 
 // Endpoint to receive GitHub webhooks
 router.post('/github', ctx => {
-    const body = JSON.stringify(ctx.request.body);
-    const hash = crypto.createHmac('sha1', process.env.HOOK_SECRET).update(body).digest('hex');
-    const githubSignature = ctx.headers['x-hub-signature'];
+	const body = JSON.stringify(ctx.request.body);
+	const hash = crypto.createHmac('sha1', process.env.HOOK_SECRET).update(body).digest('hex');
+	const githubSignature = ctx.headers['x-hub-signature'];
 
-    if (typeof githubSignature === 'string') {
-        const sig1 = Buffer.from(githubSignature);
-        const sig2 = Buffer.from(`sha1=${hash}`);
+	if (typeof githubSignature === 'string') {
+		const sig1 = Buffer.from(githubSignature);
+		const sig2 = Buffer.from(`sha1=${hash}`);
 
-        if (sig1.equals(sig2)) {
-            let ghHeader = ctx.headers['x-github-event'] as string;
-            handler.emit(ghHeader, ctx.request.body);
-            ctx.status = 204;
-        } else {
-            ctx.status = 400;
-            ctx.body = 'Invalid GitHub signature';
-        }
-    } else {
-        ctx.status = 400;
-        ctx.body = 'Invalid or missing GitHub signature';
-    }
+		if (sig1.equals(sig2)) {
+			let ghHeader = ctx.headers['x-github-event'] as string;
+			handler.emit(ghHeader, ctx.request.body);
+			ctx.status = 204;
+		} else {
+			ctx.status = 400;
+			ctx.body = 'Invalid GitHub signature';
+		}
+	} else {
+		ctx.status = 400;
+		ctx.body = 'Invalid or missing GitHub signature';
+	}
 });
 
 app.use(router.routes());
 
 if (isHookEnabled('HOOK_STATUS')) handler.on('status', event => {
-    const state = event.state;
-    switch (state) {
-        case 'error':
-        case 'failure':
-            const commit = event.commit;
-            const parent = commit.parents[0];
+	const state = event.state;
+	switch (state) {
+		case 'error':
+		case 'failure':
+			const commit = event.commit;
+			const parent = commit.parents[0];
 
-            // Using node-fetch to make the HTTP request
-            fetch(`${parent.url}/statuses`, {
-                method: 'GET', // Specify the method if necessary, default is GET
-                headers: {
-                    'User-Agent': 'misskey'
-                },
-                // proxy is not directly supported in node-fetch, you might need to use a custom agent
-            }).then(response => response.json()) // Convert response to JSON
-              .then(parentStatuses => {
-                const parentState = parentStatuses[0]?.state;
-                const stillFailed = parentState === 'failure' || parentState === 'error';
-                if (stillFailed) {
-                    post(`⚠️ **BUILD STILL FAILED** ⚠️: [${commit.commit.message}](${commit.html_url})`);
-                } else {
-                    post(`🚨 **BUILD FAILED** 🚨: [${commit.commit.message}](${commit.html_url})`);
-                }
-            }).catch(err => {
-                console.error('HTTP Request failed', err);
-            });
-            break;
-    }
+			// Using node-fetch to make the HTTP request
+			fetch(`${parent.url}/statuses`, {
+				method: 'GET', // Specify the method if necessary, default is GET
+				headers: {
+					'User-Agent': 'misskey'
+				},
+				// proxy is not directly supported in node-fetch, you might need to use a custom agent
+			}).then(response => response.json()) // Convert response to JSON
+			  .then(parentStatuses => {
+				const parentState = parentStatuses[0]?.state;
+				const stillFailed = parentState === 'failure' || parentState === 'error';
+				if (stillFailed) {
+					post(`⚠️ **BUILD STILL FAILED** ⚠️: [${commit.commit.message}](${commit.html_url})`);
+				} else {
+					post(`🚨 **BUILD FAILED** 🚨: [${commit.commit.message}](${commit.html_url})`);
+				}
+			}).catch(err => {
+				console.error('HTTP Request failed', err);
+			});
+			break;
+	}
 });
 
 

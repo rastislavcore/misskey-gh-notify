@@ -9,12 +9,14 @@
 		"sourceMap": false,
 		"resolveJsonModule": true,
 		"esModuleInterop": true,
-		"target": "es6",
-		"module": "commonjs",
+		"target": "ESNext",
+		"module": "ESNext",
 		"removeComments": false,
 		"noLib": false,
 		"outDir": "built",
-		"rootDir": "src"
+		"rootDir": "src",
+		"moduleResolution": "node",
+		"allowSyntheticDefaultImports": true
 	},
 	"compileOnSave": false,
 	"include": [
