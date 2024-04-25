@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+import axios from 'axios';
 import * as http from 'http';
 import { EventEmitter } from 'events';
 import Koa from 'koa';
@@ -25,21 +25,19 @@ const allowedIPBlocks = [
 	new Netmask('143.55.64.0/20'),
 ];
 
-// Function to post a note to Misskey using node-fetch
+// Function to post a note to Misskey using axios
 const post = async (text: string, home = true) => {
-	await fetch(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({
-			i: process.env.MISSKEY_TOKEN,
-			text,
-			visibility: home ? 'home' : 'public',
-			noExtractMentions: true,
-			noExtractHashtags: true
-		})
-	});
+    await axios.post(process.env.MISSKEY_INSTANCE_URL + '/api/notes/create', {
+        i: process.env.MISSKEY_TOKEN,
+        text,
+        visibility: home ? 'home' : 'public',
+        noExtractMentions: true,
+        noExtractHashtags: true
+    }, {
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
 };
 
 const app = new Koa();
@@ -86,37 +84,35 @@ router.post('/github', ctx => {
 
 app.use(router.routes());
 
+// Example of converting a fetch GET request to axios
 if (isHookEnabled('HOOK_STATUS')) handler.on('status', event => {
-	const state = event.state;
-	switch (state) {
-		case 'error':
-		case 'failure':
-			const commit = event.commit;
-			const parent = commit.parents[0];
+    const state = event.state;
+    switch (state) {
+        case 'error':
+        case 'failure':
+            const commit = event.commit;
+            const parent = commit.parents[0];
 
-			// Using node-fetch to make the HTTP request
-			fetch(`${parent.url}/statuses`, {
-				method: 'GET', // Specify the method if necessary, default is GET
-				headers: {
-					'User-Agent': 'misskey'
-				},
-				// proxy is not directly supported in node-fetch, you might need to use a custom agent
-			}).then(response => response.json()) // Convert response to JSON
-			  .then(parentStatuses => {
-				const parentState = parentStatuses[0]?.state;
-				const stillFailed = parentState === 'failure' || parentState === 'error';
-				if (stillFailed) {
-					post(`⚠️ **BUILD STILL FAILED** ⚠️: [${commit.commit.message}](${commit.html_url})`);
-				} else {
-					post(`🚨 **BUILD FAILED** 🚨: [${commit.commit.message}](${commit.html_url})`);
-				}
-			}).catch(err => {
-				console.error('HTTP Request failed', err);
-			});
-			break;
-	}
+            // Using axios to make the HTTP GET request
+            axios.get(`${parent.url}/statuses`, {
+                headers: {
+                    'User-Agent': 'misskey'
+                }
+            }).then(response => {
+                const parentStatuses = response.data; // accessing data directly
+                const parentState = parentStatuses[0]?.state;
+                const stillFailed = parentState === 'failure' || parentState === 'error';
+                if (stillFailed) {
+                    post(`⚠️ **BUILD STILL FAILED** ⚠️: [${commit.commit.message}](${commit.html_url})`);
+                } else {
+                    post(`🚨 **BUILD FAILED** 🚨: [${commit.commit.message}](${commit.html_url})`);
+                }
+            }).catch(err => {
+                console.error('HTTP Request failed', err);
+            });
+            break;
+    }
 });
-
 
 if (isHookEnabled('HOOK_PUSH')) handler.on('push', event => {
 	const ref = event.ref;
