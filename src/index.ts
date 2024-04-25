@@ -5,7 +5,7 @@ import Koa from 'koa';
 import Router from 'koa-router';
 import bodyParser from 'koa-bodyparser';
 import crypto from 'crypto';
-import { Netmask } from 'netmask';
+import CidrMatcher from 'cidr-matcher';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -18,12 +18,17 @@ const isHookEnabled = (hookName: string) => {
 const handler = new EventEmitter();
 
 // GitHub's IP range for webhooks: https://api.github.com/meta (section hooks)
-const allowedIPBlocks = [
-	new Netmask('192.30.252.0/22'),
-	new Netmask('185.199.108.0/22'),
-	new Netmask('140.82.112.0/20'),
-	new Netmask('143.55.64.0/20'),
-];
+const ipv4Matcher = new CidrMatcher([
+	'192.30.252.0/22',
+	'185.199.108.0/22',
+	'140.82.112.0/20',
+	'143.55.64.0/20'
+]);
+
+const ipv6Matcher = new CidrMatcher([
+	'2a0a:a440::/29',
+	'2606:50c0::/32'
+]);
 
 // Function to post a note to Misskey using axios
 const post = async (text: string, home = true) => {
@@ -48,7 +53,7 @@ const router = new Router();
 // Middleware to validate the IP address of the request
 app.use((ctx, next) => {
 	const ip = ctx.ip;
-	const isAllowed = allowedIPBlocks.some(block => block.contains(ip));
+	const isAllowed = (ip.includes(':') ? ipv6Matcher : ipv4Matcher).contains(ip);
 	if (isAllowed) {
 		return next();
 	} else {
